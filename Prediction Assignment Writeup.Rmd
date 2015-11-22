@@ -1,0 +1,112 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Pratheebha"
+date: "November 21, 2015"
+output: html_document
+---
+
+### Executive Summary
+####In this project,the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+### Getting data 
+```{r}
+training <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+file_dest_training <- "pml-training.csv"
+download.file(url= training, destfile=file_dest_training, method="curl")
+testing <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+file_dest_testing <- "pml-testing.csv"
+download.file(url= testing, destfile=file_dest_testing, method="curl")
+
+# Import the data treating empty values as NA.
+df_training <- read.csv(file_dest_training, na.strings=c("NA",""), header=TRUE)
+dim(df_training)
+colnames_train <- colnames(df_training)
+df_testing <- read.csv(file_dest_testing, na.strings=c("NA",""), header=TRUE)
+dim(df_testing)
+colnames_test <- colnames(df_testing)
+summary(df_training$classe)
+
+# Verify that the column names (excluding classe and problem_id) are identical in the training and test set.
+all.equal(colnames_train[1:length(colnames_train)-1], colnames_test[1:length(colnames_train)-1])
+```
+#### There are 19622 collection of data with 160 variables. First we split the data into a training set on the model and then into a testing set to check the performance of the model based on the predicting variable classe, then remove any missing values from the training data set.
+```{r}
+library(caret)
+set.seed(12345)
+inTrain = createDataPartition(y=df_training$classe, p = 0.6, list = FALSE)
+training = df_training[inTrain, ]
+testing = df_training[-inTrain, ]
+dim(training)
+dim(testing)
+
+na_test = sapply(training, function(x) {sum(is.na(x))})
+table(na_test)
+
+```
+#### There were 100 columns with missing values and we remove these from the training dataset.
+```{r}
+library(caret)
+miss_Cols = names(na_test[na_test == 11543])
+training = training[, !names(training) %in% miss_Cols]
+testing = testing[, !names(testing) %in% miss_Cols]
+training = training[, -c(1:7)]
+testing = testing[, -c(1:7)]
+myTraining <- training
+myTesting <- testing
+
+nzv <- nearZeroVar(myTraining, saveMetrics=TRUE)
+myTraining <- myTraining[,nzv$nzv==FALSE]
+
+nzv<- nearZeroVar(myTesting,saveMetrics=TRUE)
+myTesting <- myTesting[,nzv$nzv==FALSE]
+
+clean <- colnames(myTraining[, -46])
+testing <-df_testing
+str(training)
+
+```
+
+###Prediction with Decision Trees
+```{r}
+set.seed(12345)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+
+modFitA1 <-rpart(classe ~ ., data =myTraining, method = "class")
+fancyRpartPlot(modFitA1)
+```
+```{r}
+predictionsA1 <- predict(modFitA1, myTesting, type = "class")
+cmtree <- confusionMatrix(predictionsA1, myTesting$classe)
+cmtree
+round(cmtree$overall['Accuracy'],4)
+```
+
+### Prediction using random Forest on the model
+```{r}
+library(randomForest)
+set.seed(12345)
+modFitB1 <- randomForest(classe ~.,  data = myTraining)
+predictionB1 <- predict(modFitB1, myTesting, type ="class")
+
+cmrf <- confusionMatrix(predictionB1, myTesting$classe)
+cmrf
+round(cmrf$overall['Accuracy'],4)
+```
+### Conclusion
+#### The decision tree gives an accuracy of 72.67% while the random forest Model gives an 99.44% accuracy. The random forest model is better suited to make more valid predictions for this data set 
+
+
+### Code to create predictions
+```{r}
+predictionBB <- predict(modFitB1, testing, type ="class")
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictionBB)
